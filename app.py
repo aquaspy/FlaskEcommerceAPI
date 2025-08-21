@@ -2,11 +2,16 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = "my_key_123"
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ecommerce.db'
 
+login_manager = LoginManager()
 db = SQLAlchemy(app)
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 CORS(app)
 
 #Product (id, name, price, description)
@@ -17,7 +22,28 @@ class Product(db.Model):
     price = db.Column(db.Float, nullable=False)
     description = db.Column(db.Text, nullable=True)
 
+# User (id, username, password)
+
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), nullable=False, unique=True)
+    password = db.Column(db.String(80), nullable=True)
+
+#Authentication. This should check which user is trying to use the protected route
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+
+@app.route('/logout', methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"message": "Logout successfully"})
+
+
 @app.route('/api/products/add', methods=["POST"])
+@login_required
 
 #Let's use snake case here. 
 
@@ -33,6 +59,7 @@ def add_product():
 
 
 @app.route('/api/products/delete/<int:product_id>', methods=["DELETE"])
+@login_required
 
 def delete_product(product_id):
     product = Product.query.get(product_id)
@@ -58,6 +85,7 @@ def get_product_details(product_id):
     return jsonify({"message": "Product not found."}, 404)
 
 @app.route('/api/products/update/<int:product_id>', methods=["PUT"])
+@login_required
 
 def update_product(product_id):
     product = Product.query.get(product_id)
@@ -92,6 +120,21 @@ def get_products():
         }
         product_list.append(product_data)
     return jsonify(product_list)
+
+
+@app.route('/login', methods=["POST"])
+
+def login():
+    data = request.json
+    
+    user = User.query.filter_by(username=data.get("username")).first()
+    if user and data.get("password") == user.password:
+        login_user(user)
+        return jsonify({"message": "Logged in successfully"})
+
+    return jsonify({"message": "Unauthorized. Invalid crendentials"})
+    
+
 
 #Main page (/)
 @app.route('/')
